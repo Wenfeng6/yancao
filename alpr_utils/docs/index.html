@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>alpr_utils</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <style>
+      table, th, td {
+        border: 1px solid black;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <p>
+        <span>repository: </span>
+        <a href="https://github.com/ufownl/alpr_utils">https://github.com/ufownl/alpr_utils</a>
+      </p>
+      <p>
+        <label for="server">server</label>
+        <input v-model="server" type="text" id="server" />
+      </p>
+      <p>
+        <div>
+          <input type="file" accept="image/*" @change="chooseImage" :disabled="processing" />
+          <button @click="run" :disabled="processing">Run</button>
+        </div>
+        <div>
+          <label for="yolo">Detect Vehicles</label>
+          <input v-model="yolo" type="checkbox" id="yolo" />
+          <label for="vehicle">Vehicle Images</label>
+          <input v-model="vehicle" type="checkbox" id="vehicle" />
+          <label for="plate">Plate Images</label>
+          <input v-model="plate" type="checkbox" id="plate" />
+        </div>
+      </p>
+      <div>{{ message }}</div>
+      <p v-for="res in results">
+        <img v-if="res.image" :src="res.image" alt="vehicle" />
+        <plate-table :plates="res.plates" />
+      </p>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.10"></script>
+    <script type="text/javascript">
+      Vue.component("plate-table", {
+        props: {
+          plates: {
+            type: Array,
+            default: []
+          }
+        },
+        template: '\
+          <table>\
+            <tr>\
+              <th>plate</th>\
+              <th>result</th>\
+              <th>confidence</th>\
+            </tr>\
+            <tr v-for="plt in plates">\
+              <td><img v-if="plt.image" :src="plt.image" alt="plate" /></td>\
+              <td>{{ plt.text }}</td>\
+              <td>{{ plt.confidence }}</td>\
+            </tr>\
+          </table>\
+        '
+      })
+    </script>
+    <script type="text/javascript">
+      function get_param(name) {
+        let reg = new RegExp('(^|&)' + name + '=([^&]*)(&|$)')
+        let r = window.location.search.substr(1).match(reg)
+        if (r != null) {
+          return unescape(r[2])
+        }
+        return null
+      }
+
+      let server = get_param('server')
+      new Vue({
+        el: '#app',
+        data: {
+          server: server ? server : 'http://localhost',
+          image: undefined,
+          yolo: true,
+          vehicle: true,
+          plate: true,
+          message: '',
+          processing: false,
+          results: []
+        },
+        methods: {
+          chooseImage(e) {
+            this.image = e.target.files[0]
+          },
+          run() {
+            if (!this.image) {
+              this.message = 'Please select an image file!'
+              return
+            }
+            this.message = 'Uploading and processing...'
+            this.processing = true
+            let form = new FormData()
+            form.append('image', this.image)
+            form.append('yolo', this.yolo)
+            form.append('vehicle', this.vehicle)
+            form.append('plate', this.plate)
+            let url = encodeURI(this.server + '/alpr_utils/run')
+            let xhr = new XMLHttpRequest()
+            xhr.open('POST', url, true)
+            xhr.onload = () => {
+              if (xhr.readyState !== 4) {
+                return
+              }
+              this.processing = false
+              if (xhr.status !== 200) {
+                this.message = 'ERROR: HTTP status code (' + xhr.status + ')'
+                return
+              }
+              let resp = JSON.parse(xhr.response)
+              if (!resp.length) {
+                this.message = 'ERROR: Invalid response'
+                return
+              }
+              this.message = ''
+              this.results = resp
+            }
+            xhr.onerror = () => {
+              this.message = 'ERROR: Failed to call "' + url + '"'
+              this.processing = false
+            }
+            xhr.send(form)
+          }
+        }
+      })
+    </script>
+  </body>
+</html>
